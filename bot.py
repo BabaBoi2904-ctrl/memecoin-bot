@@ -2,10 +2,11 @@ import asyncio
 import time
 import requests
 from bs4 import BeautifulSoup
+import os
 from telegram import Bot
 
 # ===== YOUR CREDENTIALS =====
-BOT_TOKEN = "8498168964:AAHzNqjdaWUxtL7Zkc0HGyaPnBhj43e2nN8"
+BOT_TOKEN = os.getenv("BOT_TOKEN"
 CHAT_ID = "1252809476"
 # ============================
 
