@@ -1,16 +1,18 @@
+import os
 import asyncio
 import time
 import requests
 from bs4 import BeautifulSoup
-import os
 from telegram import Bot
 
-# ===== YOUR CREDENTIALS =====
+# ================= CONFIG =================
+
+# Read token from Railway environment variable
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = "1252809476"
+
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN not found in environment variables")
-CHAT_ID = "1252809476"
-# ============================
 
 KEYWORDS = [
     "memecoin",
@@ -25,54 +27,90 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
+# =========================================
+
 bot = Bot(token=BOT_TOKEN)
 
+# ================= FUNCTIONS =================
+
 def get_hype(keyword):
+    """
+    Safely fetch hype data from Nitter.
+    Never crashes the app.
+    """
     url = f"https://nitter.net/search?q={keyword}&f=tweets"
-    r = requests.get(url, headers=HEADERS, timeout=10)
 
-    soup = BeautifulSoup(r.text, "html.parser")
-    tweets = soup.select(".timeline-item")
+    try:
+        response = requests.get(
+            url,
+            headers=HEADERS,
+            timeout=15
+        )
 
-    users = set()
-    for t in tweets:
-        user = t.select_one(".username")
-        if user:
-            users.add(user.text.strip())
+        if response.status_code != 200:
+            print(f"[WARN] Nitter blocked request for: {keyword}")
+            return 0, 0, 0
 
-    tweet_count = len(tweets)
-    user_count = len(users)
-    hype_score = (tweet_count * 2) + (user_count * 3)
+        soup = BeautifulSoup(response.text, "html.parser")
+        tweets = soup.select(".timeline-item")
 
-    return tweet_count, user_count, hype_score
+        users = set()
+        for tweet in tweets:
+            user = tweet.select_one(".username")
+            if user:
+                users.add(user.text.strip())
 
-async def send_alert(msg):
-    await bot.send_message(chat_id=CHAT_ID, text=msg)
+        tweet_count = len(tweets)
+        user_count = len(users)
+
+        hype_score = (tweet_count * 1.5) + (user_count * 4)
+
+        return tweet_count, user_count, round(hype_score, 2)
+
+    except Exception as e:
+        print(f"[ERROR] Fetch failed for {keyword}: {e}")
+        return 0, 0, 0
+
+
+async def send_alert(message):
+    try:
+        await bot.send_message(chat_id=CHAT_ID, text=message)
+    except Exception as e:
+        print(f"[ERROR] Telegram send failed: {e}")
+
+
+# ================= MAIN LOOP =================
 
 async def run_bot():
+    # Give Railway time to settle before scraping
+    await asyncio.sleep(30)
+
+    print("🤖 Memecoin bot started and running 24/7")
+
     while True:
-        for kw in KEYWORDS:
-            try:
-                tweets, users, score = get_hype(kw)
+        for keyword in KEYWORDS:
+            tweets, users, score = get_hype(keyword)
 
-                if score > 40 and users > 10:
-                    message = (
-                        "🚨 MEMECOIN HYPE ALERT 🚨\n\n"
-                        f"Keyword: {kw}\n"
-                        f"Tweets: {tweets}\n"
-                        f"Users: {users}\n"
-                        f"Hype Score: {score}\n\n"
-                        "⚠️ Early-stage hype detected\n"
-                        "DYOR – High risk"
-                    )
-                    await send_alert(message)
+            if score > 40 and users > 10:
+                alert_message = (
+                    "🚨 MEMECOIN HYPE ALERT 🚨\n\n"
+                    f"Keyword: {keyword}\n"
+                    f"Tweets: {tweets}\n"
+                    f"Unique Users: {users}\n"
+                    f"Hype Score: {score}\n\n"
+                    "⚠️ Early-stage hype detected\n"
+                    "DYOR – High risk"
+                )
+                await send_alert(alert_message)
 
-                time.sleep(5)  # anti-block
+            # Slow down between keywords (avoid blocks)
+            time.sleep(10)
 
-            except Exception as e:
-                print("Error:", e)
+        # Wait before next full scan
+        await asyncio.sleep(600)  # 10 minutes
 
-        await asyncio.sleep(600)  # wait 10 minutes
+
+# ================= ENTRY POINT =================
 
 if __name__ == "__main__":
     asyncio.run(run_bot())
