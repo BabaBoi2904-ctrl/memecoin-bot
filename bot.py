@@ -6,7 +6,9 @@ import os
 from telegram import Bot
 
 # ===== YOUR CREDENTIALS =====
-BOT_TOKEN = os.getenv("BOT_TOKEN"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN not found in environment variables")
 CHAT_ID = "1252809476"
 # ============================
 
